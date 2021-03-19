@@ -2,27 +2,113 @@ from typing import List
 from openrgb import orgb, OpenRGBClient
 from openrgb.utils import RGBColor
 from datetime import datetime
+from plaid.colors import scale_value, BLACK, WHITE
 import time, random
 
 
-class Palette():
-    main_hsv: int = random.randrange(0,360,10)
+def BlendedHueRange(start_hue: int, end_hue: int, length: int) -> List[int]:
+    """
+    :param start_hue: the starting hue value
+    :param end_hue: the ending hue value
+    :param length: the size of the output range
+    :return: a list of hue values (length in size) scaling between start and end
+    """
+    return [
+        int(scale_value(start_hue, end_hue, n / (length - 1))) % 360
+        for n in range(length)
+    ]
+
+
+class ColorWheel(object):
+    """
+    ColorWheel is just an array of colors.py to display!
+    I've tested patterns 40-200 colors.py in length.
+    """
+
+    def __init__(self, array):
+        self.array = array
+
+    def __add__(self, other):
+        return ColorWheel(self.array + other.array)
+
+    @property
+    def size(self) -> int:
+        return len(self.array)
+
+    def shifted_pct(self, pct: float):
+        """
+        rotates the color wheel by a percentage of it's width
+        :param pct: the amount to rotate the wheel, 0-100
+        :return: a new wheel, shifted by pct%
+        """
+        amount = int(pct * len(self.array))
+        return self.shifted_amount(amount)
+
+    def shifted_amount(self, amount: float):
+        """
+        rotates the color wheel by an amount
+        :param amount: the amount to rotate the wheel
+        :return: a new wheel, shifted by amount
+        """
+        amount = amount % self.size
+        return ColorWheel(self.array[amount:] + self.array[:amount])
+
+    def get_array(self, output_size) -> List[RGBColor]:
+        """
+        repeats the color wheel in an array of output_size
+        :param output_size:
+        :return: a list of length output_size, repeating the input wheel until complete
+        """
+        return [self.array[n % self.size] for n in range(output_size)]
+
+
+def BlendedWheel(
+        start_hue: int,
+        end_hue: int,
+        length: int,
+        saturation: int = 100,
+        brightness: int = 100,
+) -> ColorWheel:
+    """
+    :param start_hue: the starting hue value
+    :param end_hue: the ending hue value
+    :param length: the size of the output range
+    :param saturation: the saturation of the gradient
+    :param brightness: the brightness value
+    :return: a HSV gradient between start_hue and end_hue
+    """
+    return ColorWheel([
+        RGBColor.fromHSV(hue, saturation, brightness)
+        for hue in BlendedHueRange(start_hue, end_hue, length)
+    ])
+
+def FadeHueBrightess(hue, start, end, length) -> ColorWheel:
+    return ColorWheel([
+        RGBColor.fromHSV(hue, 100, int(scale_value(start, end, n/length)))
+        for n in range(length)
+    ])
+
+class Palette:
+    main_hsv: int = random.randrange(0, 360, 10)
     alt_hsv_distance: int = 40
     third_hsv_distance: int = 20
     saturation: int = 100
     value: int = 100
-
 
     def set_main_hue(self, value):
         self.main_hsv = value
 
     @property
     def alt_hsv(self):
-        return (self.main_hsv + self.alt_hsv_distance)
+        return self.main_hsv + self.alt_hsv_distance
 
     @property
     def third_hsv(self):
-        return (self.main_hsv - self.third_hsv_distance)
+        return self.main_hsv - self.third_hsv_distance
+
+    @property
+    def inverse_hsv(self):
+        return self.main_hsv + 180
 
     @property
     def saturation(self):
@@ -44,47 +130,35 @@ class Palette():
     def third(self):
         return RGBColor.fromHSV(self.third_hsv, self.saturation, self.value)
 
-
-def BlendHue(start_hue: int, end_hue: int, pct):
-    return (start_hue + (end_hue - start_hue) * abs(pct)) % 360
-
-
-def BlendedHueRange(start_hue: int, end_hue: int, length: int):
-    return [
-        BlendHue(start_hue, end_hue, n / (length - 1))
-        for n in range(length)
-    ]
+    @property
+    def inverse(self):
+        return RGBColor.fromHSV(self.inverse_hsv, self.saturation, self.value)
 
 
-def BlendedColorRange(start_hue: int, end_hue: int, length: int, saturation: int = 100, value: int = 100):
-    return [
-        RGBColor.fromHSV(hue, saturation, value)
-        for hue in BlendedHueRange(start_hue, end_hue, length)
-    ]
+class Segment(object):
+    def __init__(self, title, device, start, end):
+        self.title = title
+        self.device = device
+        self.start = start
+        self.end = end
 
-
-def Spin(array, pct):
-    spin_size = int(pct / 100.0 * len(array))
-    return array[spin_size:] + array[:spin_size]
-
-
-def RepeatLength(array, length):
-    return [
-        array[n % len(array)]
-        for n in range(length)
-    ]
+class Region(object):
+    def __init__(self, title, segments=None):
+        self.title = title
+        self.segments = segments or []
 
 
 class PlaidManager(object):
     start: datetime
     now: datetime
-    frame_times: List[int]
-    gradient_wheel_colors: List[RGBColor]
+    frame_times: List[float]
+    cached_wheel: ColorWheel
 
     def __init__(self):
         self.client = OpenRGBClient()
         self.client.connect()
         self.frame = 0
+        self.gradient_frame = 0
         self.fps = 30
         self.palette = Palette()
         self.frame_times = []
@@ -94,18 +168,27 @@ class PlaidManager(object):
         return self.client.devices
 
     @property
-    def gradient_wheel(self):
-        if not getattr(self, 'gradient_wheel_colors', None):
-            self.gradient_wheel_colors = (
-                    BlendedColorRange(self.palette.main_hsv, self.palette.alt_hsv, 64) +
-                    BlendedColorRange(self.palette.alt_hsv, self.palette.main_hsv, 64) +
-                    BlendedColorRange(self.palette.main_hsv, self.palette.main_hsv, 32) +
-                    BlendedColorRange(self.palette.main_hsv, self.palette.third_hsv, 32) +
-                    BlendedColorRange(self.palette.third_hsv, self.palette.main_hsv, 32) +
-                    BlendedColorRange(self.palette.main_hsv, self.palette.main_hsv, 64)
-
+    def wheel(self):
+        if not getattr(self, "cached_wheel", None):
+            self.cached_wheel = (
+                    BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 48)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 16)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.third_hsv, 16)
+                    + BlendedWheel(self.palette.third_hsv, self.palette.main_hsv, 16)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.alt_hsv, 16)
+                    + BlendedWheel(self.palette.alt_hsv, self.palette.main_hsv, 16)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 16)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.third_hsv, 16)
+                    + BlendedWheel(self.palette.third_hsv, self.palette.main_hsv, 16)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 48)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.alt_hsv, 16)
+                    + BlendedWheel(self.palette.alt_hsv, self.palette.main_hsv, 48)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 16)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.third_hsv, 16)
+                    + BlendedWheel(self.palette.third_hsv, self.palette.main_hsv, 16)
+                    + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 48)
             )
-        return self.gradient_wheel_colors
+        return self.cached_wheel
 
     def RenderAnimationFrame(self):
         if self.now.hour >= 23 or self.now.hour <= 8:
@@ -118,10 +201,11 @@ class PlaidManager(object):
             d.set_color(RGBColor.fromHSV(0, 0, 0))
 
     def Rainbow(self):
+        self.gradient_frame += 1
         for d in self.devices:
             colors = []
             for n, led in enumerate(d.leds):
-                colors.append(RGBColor.fromHSV((self.frame + n) * 3 % 360, 100, 100))
+                colors.append(RGBColor.fromHSV((self.gradient_frame + n) * 3 % 360, 100, 100))
             d.set_colors(colors)
 
     def Solid(self, color=None):
@@ -129,18 +213,21 @@ class PlaidManager(object):
             d.set_color(color or self.palette.main)
 
     def Gradient(self):
-        for n,d in enumerate(self.devices):
-            colors = RepeatLength(Spin(self.gradient_wheel, (self.frame+n+n+n) % 100), len(d.leds))
+        self.gradient_frame = self.gradient_frame + 1
+        for n, d in enumerate(self.devices):
+            colors = self.wheel.shifted_amount(self.gradient_frame + n * 3).get_array(len(d.leds))
             d.set_colors(colors)
 
     def OncePerSecond(self):
         self.now = datetime.now()
         self.palette.main_hsv = int(time.time()) % 360
-        self.gradient_wheel_colors = None
+        self.cached_wheel = None
 
         if self.now.second % 10 == 0 and self.frame_times:
             frame_time_avg = sum(self.frame_times) / len(self.frame_times)
-            print(f"Avg frame: {int(frame_time_avg * 1000)}ms, FPS: {int(1 / frame_time_avg)}, Color: {self.palette.main_hsv}/{self.palette.alt_hsv}/{self.palette.third_hsv}")
+            print(
+                f"Avg frame: {int(frame_time_avg * 1000)}ms, FPS: {int(1 / frame_time_avg)}, Color: {self.palette.main_hsv}/{self.palette.alt_hsv}/{self.palette.third_hsv}"
+            )
 
     def Start(self):
         self.start = datetime.now()
@@ -157,12 +244,14 @@ class PlaidManager(object):
             sleep_needed = sec_per_frame - elapsed
             if sleep_needed > 0:
                 time.sleep(sleep_needed)
-            self.frame_times = [elapsed, ] + self.frame_times[:99]
+            self.frame_times = [
+                                   elapsed,
+                               ] + self.frame_times[:99]
             if self.frame % self.fps == 0:
                 self.OncePerSecond()
 
 
 # Press the green button in the gutter to run the script.
-if __name__ == '__main__':
+if __name__ == "__main__":
     manager = PlaidManager()
     manager.Start()
