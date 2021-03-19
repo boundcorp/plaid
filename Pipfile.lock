@@ -1,0 +1,29 @@
+{
+    "_meta": {
+        "hash": {
+            "sha256": "9f29264df667c8df3e328508a8ff0a1db26762429fc7e0d238f8e752564ec72a"
+        },
+        "pipfile-spec": 6,
+        "requires": {
+            "python_version": "3.8"
+        },
+        "sources": [
+            {
+                "name": "pypi",
+                "url": "https://pypi.org/simple",
+                "verify_ssl": true
+            }
+        ]
+    },
+    "default": {
+        "openrgb-python": {
+            "hashes": [
+                "sha256:c16d07f655cdd01a93c2e3bb56ed26ecacf80237ddc3b896c86824d6acd7248e",
+                "sha256:c44892846aac90650e1504790c924a26162c2f91fe0015a001cf007f2f4622db"
+            ],
+            "index": "pypi",
+            "version": "==0.2.7"
+        }
+    },
+    "develop": {}
+}
