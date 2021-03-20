@@ -1,9 +1,13 @@
-from typing import List
+from typing import List, Dict
 from openrgb import orgb, OpenRGBClient
 from openrgb.utils import RGBColor
 from datetime import datetime
 from plaid.colors import scale_value, BLACK, WHITE
 import time, random
+
+RAM_NAMES = [
+    "Corsair Vengeance Pro RGB",
+]
 
 
 def BlendedHueRange(start_hue: int, end_hue: int, length: int) -> List[int]:
@@ -31,8 +35,7 @@ class ColorWheel(object):
     def __add__(self, other):
         return ColorWheel(self.array + other.array)
 
-    @property
-    def size(self) -> int:
+    def __len__(self) -> int:
         return len(self.array)
 
     def shifted_pct(self, pct: float):
@@ -50,7 +53,7 @@ class ColorWheel(object):
         :param amount: the amount to rotate the wheel
         :return: a new wheel, shifted by amount
         """
-        amount = amount % self.size
+        amount = amount % len(self)
         return ColorWheel(self.array[amount:] + self.array[:amount])
 
     def get_array(self, output_size) -> List[RGBColor]:
@@ -59,7 +62,7 @@ class ColorWheel(object):
         :param output_size:
         :return: a list of length output_size, repeating the input wheel until complete
         """
-        return [self.array[n % self.size] for n in range(output_size)]
+        return [self.array[n % len(self)] for n in range(output_size)]
 
 
 def BlendedWheel(
@@ -82,11 +85,13 @@ def BlendedWheel(
         for hue in BlendedHueRange(start_hue, end_hue, length)
     ])
 
+
 def FadeHueBrightess(hue, start, end, length) -> ColorWheel:
     return ColorWheel([
-        RGBColor.fromHSV(hue, 100, int(scale_value(start, end, n/length)))
+        RGBColor.fromHSV(hue, 100, int(scale_value(start, end, n / length)))
         for n in range(length)
     ])
+
 
 class Palette:
     main_hsv: int = random.randrange(0, 360, 10)
@@ -136,27 +141,65 @@ class Palette:
 
 
 class Segment(object):
-    def __init__(self, title, device, start, end):
+    def __init__(self, title, device: orgb.Device, start=0, end=-1, offset=0):
         self.title = title
         self.device = device
         self.start = start
         self.end = end
+        if end < 0:
+            self.end = len(device.leds) + end + 1
+
+        self.position_offset = offset
+
+    def __len__(self):
+        return self.end - self.start
+
+    def set_colors(self, colors, fast=False):
+        return self.device.set_colors(colors, self.start, self.end, fast=fast)
+
+    def apply_wheel(self, wheel: ColorWheel, render_position: float, position_is_percent=False):
+        shifted = position_is_percent and wheel.shifted_pct or wheel.shifted_amount
+        return self.set_colors(shifted(render_position + self.position_offset).get_array(len(self)))
+
+    def dump(self):
+        summary = self.device.name
+        if self.start != 0 or self.end != -1:
+            summary += "[%s:%s]" % (self.start or "", self.end != -1 and self.end or "")
+        return "Segment[%s]: %s" % (self.title, summary)
+
 
 class Region(object):
     def __init__(self, title, segments=None):
         self.title = title
         self.segments = segments or []
 
+    def apply_wheel(self, wheel: ColorWheel, render_position: float, position_is_percent=False):
+        for number, seg in enumerate(self.segments):
+            if number % 2 == 1:
+                if position_is_percent:
+                    seg.position_offset = 0.50
+                else:
+                    seg.position_offset = len(wheel) // 2
+            seg.apply_wheel(wheel, render_position, position_is_percent)
+
+    def dump(self):
+        return ("Region[%s]:\n%s" % (
+            self.title,
+            "\n".join("  " + seg.dump() for seg in self.segments)
+        ))
+
 
 class PlaidManager(object):
     start: datetime
     now: datetime
     frame_times: List[float]
+    regions: Dict[str, Region]
     cached_wheel: ColorWheel
 
     def __init__(self):
         self.client = OpenRGBClient()
         self.client.connect()
+        self.map_segments()
         self.frame = 0
         self.gradient_frame = 0
         self.fps = 30
@@ -166,6 +209,45 @@ class PlaidManager(object):
     @property
     def devices(self) -> List[orgb.Device]:
         return self.client.devices
+
+    def map_segments(self):
+        regions = {
+        }
+        for d in self.devices:
+            typename = d.type.name
+            if typename not in regions:
+                regions[typename] = Region(typename)
+
+            if d.type == orgb.utils.DeviceType.DRAM:
+                regions['DRAM'].segments.append(
+                    Segment("ram-%s" % (len(regions['DRAM'].segments) + 1), d)
+                )
+            elif d.type == orgb.utils.DeviceType.MOTHERBOARD:
+                regions['MOTHERBOARD'].segments.append(
+                    Segment("mobo", d)
+                )
+            elif d.type == orgb.utils.DeviceType.KEYBOARD:
+                regions['KEYBOARD'].segments.append(
+                    Segment("kb", d)
+                )
+            elif d.type == orgb.utils.DeviceType.MOUSE:
+                regions['MOUSE'].segments.append(
+                    Segment("mouse", d)
+                )
+            elif d.type == orgb.utils.DeviceType.COOLER:
+                fan_size = len(d.leds) // 3
+                for i in range(0, len(d.leds)//fan_size):
+                    regions['COOLER'].segments.append(
+                        Segment("cooler-%s" % (i + 1), d, i*fan_size, (i +1)* fan_size)
+                    )
+            else:
+                print("UNKNOWN DEVICE", d, typename)
+
+        print("Mapped regions:\n======\n")
+        for k, v in regions.items():
+            print(v.dump())
+
+        self.regions = regions
 
     @property
     def wheel(self):
@@ -186,7 +268,6 @@ class PlaidManager(object):
                     + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 16)
                     + BlendedWheel(self.palette.main_hsv, self.palette.third_hsv, 16)
                     + BlendedWheel(self.palette.third_hsv, self.palette.main_hsv, 16)
-                    + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 48)
             )
         return self.cached_wheel
 
@@ -214,9 +295,9 @@ class PlaidManager(object):
 
     def Gradient(self):
         self.gradient_frame = self.gradient_frame + 1
-        for n, d in enumerate(self.devices):
-            colors = self.wheel.shifted_amount(self.gradient_frame + n * 3).get_array(len(d.leds))
-            d.set_colors(colors)
+        for n, name in enumerate(self.regions.keys()):
+            region = self.regions[name]
+            region.apply_wheel(self.wheel, self.gradient_frame)
 
     def OncePerSecond(self):
         self.now = datetime.now()
