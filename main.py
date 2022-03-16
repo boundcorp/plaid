@@ -97,7 +97,7 @@ def FadeHueBrightess(hue, start, end, length) -> ColorWheel:
 class Palette:
     main_hsv: int = random.randrange(0, 360, 10)
     alt_hsv_distance: int = 40
-    third_hsv_distance: int = 30
+    third_hsv_distance: int = 60
     saturation: int = 100
     value: int = 100
 
@@ -223,7 +223,7 @@ class PlaidManager(object):
     def __init__(self):
         self.frame = 0
         self.gradient_frame = 0
-        self.fps = 20
+        self.fps = 15
         self.palette = Palette()
         self.frame_times = []
         self.safe_connect()
@@ -314,19 +314,9 @@ class PlaidManager(object):
             + BlendedWheel(self.palette.third_hsv, self.palette.main_hsv, 32)
             + BlendedWheel(self.palette.main_hsv, self.palette.alt_hsv, 32)
             + BlendedWheel(self.palette.alt_hsv, self.palette.main_hsv, 32)
-            + BlendedWheel(self.palette.main_hsv, self.palette.alt_hsv, 32)
-            + BlendedWheel(self.palette.alt_hsv, self.palette.main_hsv, 32)
             + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 64)
             + BlendedWheel(self.palette.main_hsv, self.palette.third_hsv, 32)
             + BlendedWheel(self.palette.third_hsv, self.palette.main_hsv, 32)
-            + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 64)
-            + BlendedWheel(self.palette.main_hsv, self.palette.alt_hsv, 32)
-            + BlendedWheel(self.palette.alt_hsv, self.palette.main_hsv, 32)
-            + BlendedWheel(self.palette.main_hsv, self.palette.alt_hsv, 32)
-            + BlendedWheel(self.palette.alt_hsv, self.palette.main_hsv, 32)
-            + BlendedWheel(self.palette.main_hsv, self.palette.main_hsv, 32)
-            + BlendedWheel(self.palette.main_hsv, self.palette.third_hsv, 16)
-            + BlendedWheel(self.palette.third_hsv, self.palette.main_hsv, 16)
         )
 
     def after_build_wheel(self):
