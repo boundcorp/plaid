@@ -4,7 +4,9 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [packages]
-openrgb-python = "*"
+pycairo = "*"
+pygobject = "*"
+openrgb-python = {git = "https://github.com/jath03/openrgb-python"}
 
 [requires]
 python_version = "3.8"

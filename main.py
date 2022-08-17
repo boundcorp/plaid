@@ -166,9 +166,7 @@ class Segment(object):
         return self.end - self.start
 
     def set_colors(self, colors):
-        return self.device.set_colors(
-            colors, self.start, self.end, fast=self.fast_update
-        )
+        self.device.colors[self.start:self.end] = colors
 
     def apply_wheel(
         self, wheel: ColorWheel, render_position: float, position_is_percent=False
@@ -279,6 +277,10 @@ class PlaidManager(object):
                 regions["KEYBOARD"].add_segment(Segment("kb", d))
             elif d.type == orgb.utils.DeviceType.MOUSE:
                 regions["MOUSE"].add_segment(Segment("mouse", d))
+            elif d.type == orgb.utils.DeviceType.MOUSEMAT:
+                regions["MOUSEMAT"].add_segment(Segment("mousemat", d))
+            elif d.type == orgb.utils.DeviceType.HEADSET:
+                regions["HEADSET"].add_segment(Segment("headset", d))
             elif d.type == orgb.utils.DeviceType.COOLER:
                 fan_size = len(d.leds) // 3
                 for i in range(0, len(d.leds) // fan_size):
@@ -359,6 +361,8 @@ class PlaidManager(object):
         for n, name in enumerate(self.regions.keys()):
             region = self.regions[name]
             region.apply_wheel(self.wheel, self.gradient_frame)
+        for d in self.devices:
+            d.show()
 
     def OncePerSecond(self):
         self.now = datetime.now()
