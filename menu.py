@@ -1,63 +1,39 @@
 import sys
-from threading import Thread
+from multiprocessing import Process
 
 import gi
 
-from main import PlaidManager
+from plaid.manager import PlaidManager
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GObject
 
-thread = None
 
-def message(data=None):
-    "Function to display messages to the user."
-    msg = Gtk.MessageDialog(None, Gtk.DialogFlags.MODAL,
-                            Gtk.MessageType.INFO, Gtk.ButtonsType.OK, data)
-    msg.run()
-    msg.destroy()
+class PlaidApp(Gtk.Application):
+    process: Process
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.manager = PlaidManager()
+        self.connect('activate', self.app_start)
+        image = Gtk.Image.new_from_file("./plaid.png")
+        image.set_pixel_size(24)
+        self.tray_icon = Gtk.StatusIcon.new_from_pixbuf(image.get_pixbuf())
+        self.tray_icon.set_tooltip_text("Plaid")
+        self.tray_icon.connect("activate", self.close_app)
+        self.process = Process(target=self.manager.Start)
+    def close_app(self, data=None):
+        try:
+            self.process.terminate()
+        finally:
+            Gtk.main_quit()
+            sys.exit(0)
 
-
-def close_app(data=None):
-    Gtk.main_quit()
-    sys.exit(0)
-
-
-def make_menu(event_button, event_time, data=None):
-    menu = Gtk.Menu()
-    start_item = Gtk.MenuItem("Start Plaid")
-    close_item = Gtk.MenuItem("Close App")
-
-    # Append the menu items
-    menu.append(start_item)
-    menu.append(close_item)
-    # add callbacks
-    start_item.connect_object("activate", start_plaid, None)
-    close_item.connect_object("activate", close_app, "Close App")
-    # Show the menu items
-    start_item.show()
-    close_item.show()
-
-    # Popup the menu
-    menu.popup(None, None, None, None, event_button, event_time)
-
-
-def on_right_click(data, event_button, event_time):
-    make_menu(event_button, event_time)
-
-
-def on_left_click(event):
-    message("Plaid 0.1")
-
-
-def start_plaid(data=None):
-    manager = PlaidManager()
-    Thread(target=manager.Start).start()
+    def app_start(self, app):
+        self.process.start()
 
 
 if __name__ == '__main__':
-    icon = Gtk.StatusIcon()
-    icon.connect('popup-menu', on_right_click)
-    icon.connect('activate', on_left_click)
     GObject.threads_init()
+    app = PlaidApp(application_id="net.boundcorp.Plaid")
+    app.run(sys.argv)
     Gtk.main()
