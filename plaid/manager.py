@@ -1,5 +1,6 @@
 import subprocess
 import time
+import os
 from datetime import datetime
 from typing import List, Dict
 
@@ -28,7 +29,7 @@ class PlaidManager(object):
         self.safe_connect()
         self.map_segments()
 
-    def safe_connect(self, wait=5, tries=5, restart_service=3):
+    def safe_connect(self, wait=3, tries=3, restart_service=3):
         for i in range(tries):
             try:
                 client = OpenRGBClient()
@@ -39,16 +40,24 @@ class PlaidManager(object):
                 print("Connected!")
                 return client
             except:
-                print(f"Connection error, waiting {wait} seconds for openrgb...")
+                try:
+                    # If openRGB is running
+                    subprocess.check_output(["pgrep", "openrgb"])
+                    print(f"Connection error, waiting {wait} seconds for openrgb...")
+                except:
+                    # If pgrep raised exception (no openRGB)
+                    print("No OpenRGB, attempting to start it...")
+                    self.StartOpenRGB()
                 time.sleep(wait)
         if restart_service:
             print("Error connecting, killing openrgb...")
             try:
                 subprocess.check_output(["pkill", "openrgb"])
+                time.sleep(2)
             except:
                 pass
             print("restarting service...")
-            subprocess.check_output(["sudo", "service", "openrgb", "restart"])
+            self.StartOpenRGB()
             print("waiting for service init...")
             time.sleep(10)
             return self.safe_connect(
@@ -56,6 +65,13 @@ class PlaidManager(object):
             )
 
         raise Exception("plaid unable to connect")
+
+    def StartOpenRGB(self):
+        if not os.path.exists("/etc/openrgb"):
+            print("plaid unable to connect to openrgb, and openrgb failed to start: /etc/openrgb does not exist, copy your config from ~/.config/openrgb")
+            print()
+            raise Exception("/etc/openrgb does not exist")
+        subprocess.Popen(["openrgb", "--server", "--noautoconnect", "--config", "/etc/openrgb"])
 
     @property
     def devices(self) -> List[orgb.Device]:
@@ -189,7 +205,7 @@ class PlaidManager(object):
         for d in self.devices:
             d.set_mode(0)
 
-    def Start(self):
+    def RenderForever(self):
         self.start = datetime.now()
         sec_per_frame = 1 / self.fps
 
@@ -205,9 +221,7 @@ class PlaidManager(object):
             if sleep_needed > 0:
                 time.sleep(sleep_needed)
             self.frame_times = [
-                elapsed,
-            ] + self.frame_times[:99]
+                                   elapsed,
+                               ] + self.frame_times[:99]
             if self.now.second != datetime.now().second:
                 self.OncePerSecond()
-
-

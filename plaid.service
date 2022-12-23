@@ -1,0 +1,10 @@
+[Unit]
+Description=Plaid
+# Wants=openrgb.service
+
+[Service]
+Type=simple
+ExecStart=/home/linked/p/boundcorp/plaid/start_service.sh
+
+[Install]
+WantedBy=multi-user.target

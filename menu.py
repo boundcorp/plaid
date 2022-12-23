@@ -20,7 +20,8 @@ class PlaidApp(Gtk.Application):
         self.tray_icon = Gtk.StatusIcon.new_from_pixbuf(image.get_pixbuf())
         self.tray_icon.set_tooltip_text("Plaid")
         self.tray_icon.connect("activate", self.close_app)
-        self.process = Process(target=self.manager.Start)
+        self.process = Process(target=self.manager.RenderForever)
+
     def close_app(self, data=None):
         try:
             self.process.terminate()
