@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenRGB control
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/openrgb --server --noautoconnect --config /home/linked/.config/OpenRGB/
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target

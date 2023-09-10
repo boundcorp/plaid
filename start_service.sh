@@ -2,4 +2,4 @@
 
 cd $(dirname $0)
 
-pipenv run python3 main.py
+/home/linked/.local/share/virtualenvs/plaid-B93gBx3E/bin/python3 main.py

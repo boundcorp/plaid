@@ -29,15 +29,16 @@ class PlaidManager(object):
         self.safe_connect()
         self.map_segments()
 
-    def safe_connect(self, wait=3, tries=3, restart_service=3):
+    def safe_connect(self, wait=10, tries=3, restart_service=3):
         for i in range(tries):
             try:
                 client = OpenRGBClient()
                 client.connect()
                 if not client.devices:
+                    print(f"Connected with no devices...")
                     raise
                 self.client = client
-                print("Connected!")
+                print("Connected!", len(client.devices), "devices")
                 return client
             except:
                 try:
@@ -71,7 +72,7 @@ class PlaidManager(object):
             print("plaid unable to connect to openrgb, and openrgb failed to start: /etc/openrgb does not exist, copy your config from ~/.config/openrgb")
             print()
             raise Exception("/etc/openrgb does not exist")
-        subprocess.Popen(["openrgb", "--server", "--noautoconnect", "--config", "/etc/openrgb"])
+        subprocess.Popen(["openrgb", "--server", "--noautoconnect", "--config", "/home/linked/.config/OpenRGB"])
 
     @property
     def devices(self) -> List[orgb.Device]:
@@ -95,9 +96,11 @@ class PlaidManager(object):
             elif d.type == orgb.utils.DeviceType.MOUSE:
                 regions["MOUSE"].add_segment(Segment("mouse", d))
             elif d.type == orgb.utils.DeviceType.MOUSEMAT:
-                regions["MOUSEMAT"].add_segment(Segment("mousemat", d))
+                #regions["MOUSEMAT"].add_segment(Segment("mousemat", d))
+                pass
             elif d.type == orgb.utils.DeviceType.HEADSET:
-                regions["HEADSET"].add_segment(Segment("headset", d))
+                #regions["HEADSET"].add_segment(Segment("headset", d))
+                pass
             elif d.type == orgb.utils.DeviceType.COOLER:
                 fan_size = len(d.leds) // 3
                 for i in range(0, len(d.leds) // fan_size):
@@ -139,15 +142,17 @@ class PlaidManager(object):
         )
 
     def after_build_wheel(self):
-        for number, seg in enumerate(self.regions["COOLER"].segments):
-            seg.position_offset = seg.odd and len(self.cached_wheel) // 2 or 0
-            seg.reverse_direction = seg.odd
-            seg.reverse_wheel = seg.odd
+        if "COOLER" in self.regions:
+            for number, seg in enumerate(self.regions["COOLER"].segments):
+                seg.position_offset = seg.odd and len(self.cached_wheel) // 2 or 0
+                seg.reverse_direction = seg.odd
+                seg.reverse_wheel = seg.odd
 
-        for number, seg in enumerate(self.regions["DRAM"].segments):
-            seg.position_offset = seg.odd and len(self.cached_wheel) // 2 or 0
-            seg.reverse_direction = seg.odd
-            seg.reverse_wheel = seg.odd
+        if "DRAM" in self.regions:
+            for number, seg in enumerate(self.regions["DRAM"].segments):
+                seg.position_offset = seg.odd and len(self.cached_wheel) // 2 or 0
+                seg.reverse_direction = seg.odd
+                seg.reverse_wheel = seg.odd
 
     def RenderAnimationFrame(self):
         # if self.now.hour >= 23 or self.now.hour <= 8:

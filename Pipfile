@@ -6,6 +6,7 @@ verify_ssl = true
 [packages]
 pycairo = "*"
 pygobject = "*"
+install = "*"
 openrgb-python = {git = "https://github.com/jath03/openrgb-python"}
 
 [requires]
